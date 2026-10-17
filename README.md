@@ -125,16 +125,60 @@ Os 15 cenários cobertos incluem:
 
 ---
 
-## 8. Estimativa de Custos Unitários
+## 8. Modelos de IA Suportados & Economia de Custos
 
-- **Inferência LLM (Gemini 3.8 Flash)**: ~$0.0003 por turno de conversação.
-- **Síntese Vocal (TTS)**: Gratuita via Web Speech API no cliente, ou ~$0.015 / 1.000 caracteres se migrado para Cartesia/ElevenLabs.
-- **Transcrição de Voz (STT)**: Gratuita via Web Speech API no cliente, ou ~$0.0043 / minuto via Deepgram Nova-2.
-- **Custo Operacional Total Estimado**: ~$1.72 USD por aluno ativo/mês (20 turnos diários). Margem bruta superior a 78% com planos de R$ 49,90/mês.
+O LingoNova AI suporta múltiplos provedores e modelos intercambiáveis diretamente nas **Configurações** ou via variáveis de ambiente:
+
+| Provedor | Modelo | Custo Médio / 1M Tokens | Latência | Casos de Uso Recomendados |
+| :--- | :--- | :--- | :--- | :--- |
+| **Google Gemini (Padrão)** | `gemini-3.1-flash-lite` | **~$0.075** | ~300ms | **Recomendado**: baratíssimo, excelente pedagogia, JSON nativo |
+| **Google Gemini** | `gemini-3.8-flash` | ~$0.350 | ~600ms | Raciocínio gramatical profundo, explicações complexas |
+| **DeepSeek (Chinesa)** | `deepseek-chat` (V3) | **~$0.140** | ~500ms | **Extrema economia**: excelente compreensão multilíngue |
+| **Groq Cloud** | `llama-3.1-8b-instant` | Gratuito / $0.05 | **~180ms** | **Velocidade extrema**: ideal para conversas de voz em tempo real |
+| **Groq Cloud** | `qwen-2.5-32b` (Alibaba) | ~$0.790 | ~250ms | Alta capacidade e precisão linguística |
 
 ---
 
-## 9. Limitações Conhecidas
+## 9. Como Fazer Deploy na Vercel (Produção Instantânea)
 
-- **Web Speech API**: A precisão do reconhecimento de voz e vozes disponíveis varia conforme o navegador (Google Chrome e Edge oferecem as vozes mais naturais).
-- **Fallback Sem Chave**: Caso o ambiente não possua `GEMINI_API_KEY` injetada, o servidor ativa automaticamente o motor pedagógico de heurísticas locais para evitar erros 500.
+O projeto já possui configuração nativa para a **Vercel** (`vercel.json` e `api/index.ts` serverless handler):
+
+### Passo 1: Subir o código para o GitHub
+```bash
+# Se ainda não criou o repositório remoto no GitHub:
+git remote add origin https://github.com/SEU_USUARIO/NOME_DO_REPO.git
+git branch -M main
+git push -u origin main
+```
+
+### Passo 2: Importar na Vercel
+1. Acesse [vercel.com](https://vercel.com) e clique em **"Add New..." > "Project"**.
+2. Conecte sua conta do GitHub e selecione o repositório `TalkBud-AI-Tutor` (ou o nome que escolher).
+3. O Vercel detectará automaticamente o framework Vite.
+
+### Passo 3: Configurar Variáveis de Ambiente na Vercel
+Em **Environment Variables**, adicione:
+- `GEMINI_API_KEY`: sua chave obtida no [Google AI Studio](https://aistudio.google.com/app/apikey)
+- `GEMINI_MODEL`: `gemini-3.1-flash-lite` (opcional, já é o padrão)
+- *(Opcional)* `DEEPSEEK_API_KEY`: se desejar usar o DeepSeek V3
+- *(Opcional)* `GROQ_API_KEY`: se desejar usar o Groq Cloud
+
+4. Clique em **"Deploy"**. Em menos de 2 minutos sua aplicação estará no ar com HTTPS gratuito, CDN global e funções serverless!
+
+---
+
+## 10. Estimativa de Custos Unitários
+
+- **Inferência LLM (Gemini 3.1 Flash-Lite)**: ~$0.00007 por turno de conversação (~5x mais barato que o Gemini 3.8 Flash).
+- **Inferência DeepSeek V3**: ~$0.00014 por turno.
+- **Síntese Vocal (TTS)**: Gratuita via Web Speech API no navegador.
+- **Transcrição de Voz (STT)**: Gratuita via Web Speech API no navegador.
+- **Custo Operacional Total Estimado**: Menos de **$0.40 USD por aluno ativo/mês** (20 turnos diários). Margem bruta superior a 92% com assinaturas de R$ 39 a R$ 69/mês.
+
+---
+
+## 11. Limitações Conhecidas
+
+- **Web Speech API**: A precisão do reconhecimento de voz e qualidade das vozes varia conforme o navegador (Google Chrome e Edge oferecem as vozes neurais mais naturais).
+- **Fallback Sem Chave**: Caso o ambiente não possua chaves configuradas, o servidor ativa automaticamente o motor pedagógico de heurísticas locais para evitar interrupções de serviço.
+

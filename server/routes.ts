@@ -34,39 +34,60 @@ function getAuthUserId(req: Request): string {
 
 // 1. Auth routes
 apiRouter.post('/auth/register', (req: Request, res: Response) => {
-  const { name, email } = req.body;
+  const { name, email, password } = req.body;
   if (!name || !email) {
     return res.status(400).json({ error: 'Nome e email são obrigatórios.' });
   }
 
-  const existing = db.getUserByEmail(email);
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = db.getUserByEmail(normalizedEmail);
   if (existing) {
-    return res.json({ user: existing, isExisting: true });
+    return res.status(409).json({ error: 'Este e-mail já está cadastrado. Faça login para continuar.' });
   }
 
-  const user = db.createUser(name, email);
-  res.json({ user, isExisting: false });
+  const user = db.createUser(name.trim(), normalizedEmail, password);
+  const profile = db.getProfile(user.id);
+  const token = `ln_token_${user.id}_${Date.now()}`;
+  res.json({ user, profile, token, isExisting: false });
 });
 
 apiRouter.post('/auth/login', (req: Request, res: Response) => {
-  const { email } = req.body;
+  const { email, password } = req.body;
   if (!email) {
     return res.status(400).json({ error: 'Email é obrigatório.' });
   }
 
-  let user = db.getUserByEmail(email);
+  const normalizedEmail = email.trim().toLowerCase();
+  let user = db.getUserByEmail(normalizedEmail);
+
   if (!user) {
-    // Convenient auto-create on login for frictionless onboarding
-    user = db.createUser(email.split('@')[0], email);
+    if (password && password.length >= 4) {
+      user = db.createUser(normalizedEmail.split('@')[0], normalizedEmail, password);
+    } else {
+      return res.status(404).json({ error: 'Conta não encontrada com este e-mail. Cadastre-se na aba "Criar Conta".' });
+    }
+  } else if (password && user.passwordHash) {
+    const isValid = db.validatePassword(user, password);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Senha incorreta. Verifique suas credenciais e tente novamente.' });
+    }
   }
 
-  res.json({ user });
+  const profile = db.getProfile(user.id);
+  const token = `ln_token_${user.id}_${Date.now()}`;
+  res.json({ user, profile, token });
 });
 
 apiRouter.get('/auth/me', (req: Request, res: Response) => {
-  const userId = getAuthUserId(req);
-  const user = db.getUserById(userId) || db.getUserById('user-demo');
-  const profile = db.getProfile(userId);
+  const headerUserId = req.headers['x-user-id'] as string;
+  if (!headerUserId || !headerUserId.trim()) {
+    return res.status(401).json({ error: 'Não autenticado' });
+  }
+  const user = db.getUserById(headerUserId.trim());
+  if (!user) {
+    return res.status(401).json({ error: 'Usuário não encontrado' });
+  }
+  const profile = db.getProfile(user.id);
   res.json({ user, profile });
 });
 

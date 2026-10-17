@@ -10,12 +10,14 @@ import { DossierView } from './components/DossierView';
 import { TestCaseRunner } from './components/TestCaseRunner';
 import { OnboardingModal } from './components/OnboardingModal';
 import { ApiKeyModal } from './components/ApiKeyModal';
+import { AuthScreen } from './components/AuthScreen';
 import { User, UserProfile, api } from './services/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainAppTab>('chat');
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(api.isAuthenticated());
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -25,23 +27,75 @@ export default function App() {
   }, []);
 
   const loadUser = async () => {
+    if (!api.isAuthenticated()) {
+      setIsLoading(false);
+      setIsAuthenticated(false);
+      return;
+    }
+
     try {
       const data = await api.getMe();
-      setUser(data.user);
-      setProfile(data.profile);
+      if (data && data.user) {
+        setUser(data.user);
+        setProfile(data.profile);
+        setIsAuthenticated(true);
 
-      // Prompt onboarding if not yet completed
-      if (!data.profile?.onboardingCompleted) {
-        setIsOnboardingOpen(true);
+        // Prompt onboarding if not yet completed
+        if (!data.profile?.onboardingCompleted) {
+          setIsOnboardingOpen(true);
+        }
+      } else {
+        setIsAuthenticated(false);
       }
     } catch (err) {
       console.error('Error fetching user data:', err);
+      setIsAuthenticated(false);
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (isLoading || !profile) {
+  const handleLogout = () => {
+    api.logout();
+    setUser(null);
+    setProfile(null);
+    setIsAuthenticated(false);
+  };
+
+  const handleLoginSuccess = async (loggedInUser: User, userProfile?: UserProfile) => {
+    setUser(loggedInUser);
+    if (userProfile) {
+      setProfile(userProfile);
+      if (!userProfile.onboardingCompleted) {
+        setIsOnboardingOpen(true);
+      }
+    } else {
+      try {
+        const { profile: loadedProfile } = await api.getProfile();
+        setProfile(loadedProfile);
+        if (!loadedProfile.onboardingCompleted) {
+          setIsOnboardingOpen(true);
+        }
+      } catch {
+        setProfile({
+          userId: loggedInUser.id,
+          nativeLanguage: 'Português',
+          targetLanguage: 'Inglês',
+          cefrLevel: 'B1',
+          goal: 'conversation',
+          interests: ['Cotidiano', 'Carreira'],
+          correctionStyle: 'subtle',
+          explanationLang: 'pt',
+          pace: 'normal',
+          onboardingCompleted: false,
+        });
+        setIsOnboardingOpen(true);
+      }
+    }
+    setIsAuthenticated(true);
+  };
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-100">
         <div className="flex flex-col items-center gap-3">
@@ -54,6 +108,11 @@ export default function App() {
     );
   }
 
+  // Auth gatekeeper: Render AuthScreen if user is not logged in
+  if (!isAuthenticated || !user || !profile) {
+    return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950">
       {/* Top Navbar */}
@@ -63,6 +122,7 @@ export default function App() {
         user={user}
         onOpenOnboarding={() => setIsOnboardingOpen(true)}
         onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Main Tab Content */}

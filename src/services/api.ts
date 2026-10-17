@@ -187,54 +187,99 @@ let localProgress: ProgressSummary = {
 };
 
 function getAuthHeader(): Record<string, string> {
-  const storedId = localStorage.getItem('lingonova_user_id') || 'user-demo';
-  const geminiKey = localStorage.getItem('lingonova_gemini_api_key') || '';
+  const storedId = typeof window !== 'undefined' ? localStorage.getItem('lingonova_user_id') || '' : '';
+  const geminiKey = typeof window !== 'undefined' ? localStorage.getItem('lingonova_gemini_api_key') || '' : '';
   return {
     'Content-Type': 'application/json',
-    'x-user-id': storedId,
+    ...(storedId ? { 'x-user-id': storedId } : {}),
     ...(geminiKey ? { 'x-gemini-key': geminiKey } : {}),
   };
 }
 
 export const api = {
   // Auth
-  async login(email: string): Promise<{ user: User }> {
+  isAuthenticated(): boolean {
+    if (typeof window === 'undefined') return false;
+    return !!localStorage.getItem('lingonova_user_id');
+  },
+
+  async login(email: string, password?: string): Promise<{ user: User; profile?: UserProfile }> {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, password }),
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.user?.id) localStorage.setItem('lingonova_user_id', data.user.id);
+        if (data.user?.id) {
+          localStorage.setItem('lingonova_user_id', data.user.id);
+          localStorage.setItem('lingonova_user_email', data.user.email);
+          localStorage.setItem('lingonova_user_name', data.user.name);
+          if (data.token) localStorage.setItem('lingonova_auth_token', data.token);
+        }
         return data;
       }
-    } catch {}
-    const user = { ...DEFAULT_USER, email, name: email.split('@')[0] };
-    localStorage.setItem('lingonova_user_id', user.id);
-    return { user };
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Credenciais inválidas.');
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch')) {
+        throw err;
+      }
+      // Offline fallback
+      const user = { ...DEFAULT_USER, email, name: email.split('@')[0] };
+      localStorage.setItem('lingonova_user_id', user.id);
+      localStorage.setItem('lingonova_user_email', user.email);
+      localStorage.setItem('lingonova_user_name', user.name);
+      return { user, profile: DEFAULT_PROFILE };
+    }
   },
 
-  async register(name: string, email: string): Promise<{ user: User }> {
+  async register(name: string, email: string, password?: string): Promise<{ user: User; profile?: UserProfile }> {
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
+        body: JSON.stringify({ name, email, password }),
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.user?.id) localStorage.setItem('lingonova_user_id', data.user.id);
+        if (data.user?.id) {
+          localStorage.setItem('lingonova_user_id', data.user.id);
+          localStorage.setItem('lingonova_user_email', data.user.email);
+          localStorage.setItem('lingonova_user_name', data.user.name);
+          if (data.token) localStorage.setItem('lingonova_auth_token', data.token);
+        }
         return data;
       }
-    } catch {}
-    const user = { ...DEFAULT_USER, name, email };
-    localStorage.setItem('lingonova_user_id', user.id);
-    return { user };
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Falha ao criar conta.');
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch')) {
+        throw err;
+      }
+      // Offline fallback
+      const user = { ...DEFAULT_USER, name, email };
+      localStorage.setItem('lingonova_user_id', user.id);
+      localStorage.setItem('lingonova_user_email', user.email);
+      localStorage.setItem('lingonova_user_name', user.name);
+      return { user, profile: DEFAULT_PROFILE };
+    }
   },
 
-  async getMe(): Promise<{ user: User; profile: UserProfile }> {
+  logout(): void {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('lingonova_user_id');
+      localStorage.removeItem('lingonova_auth_token');
+      localStorage.removeItem('lingonova_user_name');
+      localStorage.removeItem('lingonova_user_email');
+    }
+  },
+
+  async getMe(): Promise<{ user: User; profile: UserProfile } | null> {
+    if (typeof window !== 'undefined' && !localStorage.getItem('lingonova_user_id')) {
+      return null;
+    }
     try {
       const res = await fetch('/api/auth/me', { headers: getAuthHeader() });
       if (res.ok) {
@@ -242,7 +287,16 @@ export const api = {
         if (data.user && data.profile) return data;
       }
     } catch {}
-    return { user: DEFAULT_USER, profile: DEFAULT_PROFILE };
+
+    const storedId = localStorage.getItem('lingonova_user_id');
+    if (!storedId) return null;
+
+    const savedName = localStorage.getItem('lingonova_user_name') || 'Estudante';
+    const savedEmail = localStorage.getItem('lingonova_user_email') || 'user@example.com';
+    return {
+      user: { ...DEFAULT_USER, id: storedId, name: savedName, email: savedEmail },
+      profile: { ...DEFAULT_PROFILE, userId: storedId },
+    };
   },
 
   // Profile & Onboarding

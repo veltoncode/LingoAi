@@ -31,6 +31,7 @@ interface HeaderProps {
   user: UserType | null;
   onOpenOnboarding: () => void;
   onOpenApiKeyModal?: () => void;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   user,
   onOpenOnboarding,
   onOpenApiKeyModal,
+  onLogout,
 }) => {
   const tabs = [
     { id: 'chat', label: 'Conversa & Voz (Web)', icon: Bot, highlight: true },
@@ -97,7 +99,16 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-emerald-400 text-xs">
                 {user?.name ? user.name[0].toUpperCase() : 'U'}
               </div>
-              <span className="hidden md:inline font-semibold">{user?.name || 'Alexandre Silva'}</span>
+              <span className="hidden md:inline font-semibold">{user?.name || 'Estudante'}</span>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="ml-1 p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                  title="Sair / Desconectar"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
         </div>

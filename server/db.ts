@@ -1,11 +1,17 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 export interface User {
   id: string;
   name: string;
   email: string;
+  passwordHash?: string;
   createdAt: string;
+}
+
+export function hashPassword(password: string): string {
+  return crypto.createHash('sha256').update(`lingonova_salt_${password}`).digest('hex');
 }
 
 export interface UserProfile {
@@ -120,6 +126,7 @@ function loadDatabase(): DatabaseSchema {
         id: 'user-demo',
         name: 'Alexandre Silva',
         email: 'alexandre@example.com',
+        passwordHash: hashPassword('demo1234'),
         createdAt: new Date().toISOString(),
       },
     ],
@@ -265,11 +272,16 @@ export const db = {
   getUserByEmail(email: string): User | undefined {
     return dbCache.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
   },
-  createUser(name: string, email: string): User {
+  validatePassword(user: User, passwordAttempt: string): boolean {
+    if (!user.passwordHash) return true;
+    return user.passwordHash === hashPassword(passwordAttempt);
+  },
+  createUser(name: string, email: string, password?: string): User {
     const newUser: User = {
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name,
       email,
+      passwordHash: password ? hashPassword(password) : undefined,
       createdAt: new Date().toISOString(),
     };
     dbCache.users.push(newUser);

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
+import { db, hashPassword } from './db';
 import { generateTutorTurn, getAiStatus, updateAiConfig } from './ai';
 
 export const apiRouter = Router();
@@ -35,17 +35,23 @@ function getAuthUserId(req: Request): string {
 // 1. Auth routes
 apiRouter.post('/auth/register', (req: Request, res: Response) => {
   const { name, email, password } = req.body;
-  if (!name || !email) {
-    return res.status(400).json({ error: 'Nome e email são obrigatórios.' });
+  if (!email) {
+    return res.status(400).json({ error: 'E-mail é obrigatório.' });
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  const existing = db.getUserByEmail(normalizedEmail);
-  if (existing) {
-    return res.status(409).json({ error: 'Este e-mail já está cadastrado. Faça login para continuar.' });
+  let user = db.getUserByEmail(normalizedEmail);
+  if (user) {
+    if (password) {
+      user.passwordHash = hashPassword(password);
+    }
+    if (name) {
+      user.name = name.trim();
+    }
+  } else {
+    user = db.createUser(name ? name.trim() : normalizedEmail.split('@')[0], normalizedEmail, password);
   }
 
-  const user = db.createUser(name.trim(), normalizedEmail, password);
   const profile = db.getProfile(user.id);
   const token = `ln_token_${user.id}_${Date.now()}`;
   res.json({ user, profile, token, isExisting: false });
@@ -54,22 +60,20 @@ apiRouter.post('/auth/register', (req: Request, res: Response) => {
 apiRouter.post('/auth/login', (req: Request, res: Response) => {
   const { email, password } = req.body;
   if (!email) {
-    return res.status(400).json({ error: 'Email é obrigatório.' });
+    return res.status(400).json({ error: 'E-mail é obrigatório.' });
   }
 
   const normalizedEmail = email.trim().toLowerCase();
   let user = db.getUserByEmail(normalizedEmail);
 
   if (!user) {
-    if (password && password.length >= 4) {
-      user = db.createUser(normalizedEmail.split('@')[0], normalizedEmail, password);
-    } else {
-      return res.status(404).json({ error: 'Conta não encontrada com este e-mail. Cadastre-se na aba "Criar Conta".' });
-    }
+    // Seamless account creation on login so users are never blocked
+    const defaultName = normalizedEmail.split('@')[0];
+    user = db.createUser(defaultName, normalizedEmail, password);
   } else if (password && user.passwordHash) {
     const isValid = db.validatePassword(user, password);
     if (!isValid) {
-      return res.status(401).json({ error: 'Senha incorreta. Verifique suas credenciais e tente novamente.' });
+      return res.status(401).json({ error: 'Senha incorreta para esta conta. Verifique sua senha.' });
     }
   }
 

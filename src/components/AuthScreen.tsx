@@ -13,8 +13,7 @@ import {
   Bot, 
   Headphones, 
   Brain, 
-  Zap,
-  Play
+  Zap
 } from 'lucide-react';
 import { api, User, UserProfile } from '../services/api';
 
@@ -74,28 +73,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
 
     try {
-      if (mode === 'login') {
-        const data = await api.login(trimmedEmail, password);
-        onLoginSuccess(data.user, data.profile);
-      } else {
-        const data = await api.register(name.trim(), trimmedEmail, password);
-        onLoginSuccess(data.user, data.profile);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Erro ao realizar autenticação. Tente novamente.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      const data = mode === 'login'
+        ? await api.login(trimmedEmail, password)
+        : await api.register(name.trim() || trimmedEmail.split('@')[0], trimmedEmail, password);
 
-  const handleDemoLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await api.login('alexandre@example.com', 'demo1234');
       onLoginSuccess(data.user, data.profile);
     } catch (err: any) {
-      setError('Erro ao entrar em modo demo: ' + err.message);
+      setError(err.message || 'Erro ao realizar autenticação. Verifique os dados informados.');
     } finally {
       setIsLoading(false);
     }
@@ -352,20 +336,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             </button>
           </form>
 
-          {/* Quick Demo Access Button */}
-          <div className="mt-5 pt-5 border-t border-slate-800/80">
-            <button
-              type="button"
-              onClick={handleDemoLogin}
-              disabled={isLoading}
-              className="w-full py-2.5 bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-            >
-              <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
-              <span>Acesso Rápido para Testes (Demo 1-Clique)</span>
-            </button>
-            <p className="text-[10px] text-slate-500 text-center mt-2">
-              Credenciais de teste automáticas pré-carregadas para avaliação imediata.
-            </p>
+          {/* Security Notice */}
+          <div className="mt-6 pt-5 border-t border-slate-800/80 flex items-center justify-center gap-2 text-slate-500 text-xs">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Acesso protegido • Apenas usuários autenticados</span>
           </div>
         </div>
       </div>

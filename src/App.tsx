@@ -62,37 +62,28 @@ export default function App() {
     setIsAuthenticated(false);
   };
 
-  const handleLoginSuccess = async (loggedInUser: User, userProfile?: UserProfile) => {
+  const handleLoginSuccess = (loggedInUser: User, userProfile?: UserProfile) => {
+    const activeProfile: UserProfile = userProfile || {
+      userId: loggedInUser.id,
+      nativeLanguage: 'Português',
+      targetLanguage: 'Inglês',
+      cefrLevel: 'B1',
+      goal: 'conversation',
+      interests: ['Cotidiano', 'Carreira'],
+      correctionStyle: 'subtle',
+      explanationLang: 'pt',
+      pace: 'normal',
+      onboardingCompleted: true,
+    };
     setUser(loggedInUser);
-    if (userProfile) {
-      setProfile(userProfile);
-      if (!userProfile.onboardingCompleted) {
-        setIsOnboardingOpen(true);
-      }
-    } else {
-      try {
-        const { profile: loadedProfile } = await api.getProfile();
-        setProfile(loadedProfile);
-        if (!loadedProfile.onboardingCompleted) {
-          setIsOnboardingOpen(true);
-        }
-      } catch {
-        setProfile({
-          userId: loggedInUser.id,
-          nativeLanguage: 'Português',
-          targetLanguage: 'Inglês',
-          cefrLevel: 'B1',
-          goal: 'conversation',
-          interests: ['Cotidiano', 'Carreira'],
-          correctionStyle: 'subtle',
-          explanationLang: 'pt',
-          pace: 'normal',
-          onboardingCompleted: false,
-        });
-        setIsOnboardingOpen(true);
-      }
-    }
+    setProfile(activeProfile);
     setIsAuthenticated(true);
+
+    if (!userProfile) {
+      api.getProfile().then(({ profile: loadedProfile }) => {
+        if (loadedProfile) setProfile(loadedProfile);
+      }).catch(() => {});
+    }
   };
 
   if (isLoading) {

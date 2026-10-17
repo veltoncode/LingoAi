@@ -7,7 +7,7 @@ let activeProvider: AIProvider = (process.env.AI_PROVIDER as AIProvider) || 'gem
 
 // Gemini configuration
 let geminiApiKey = process.env.GEMINI_API_KEY || '';
-let geminiModel = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite'; // Default: Ultra-economical & fast
+let geminiModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'; // Default: Super-fast & active quota
 let geminiClient: GoogleGenAI | null = null;
 
 function initGemini() {
@@ -113,10 +113,11 @@ export function getAiStatus(): AIStatus {
       id: 'gemini',
       name: 'Google Gemini (Nativo)',
       badge: 'Econômico & Rápido',
-      defaultModel: 'gemini-3.1-flash-lite',
+      defaultModel: 'gemini-3.5-flash-lite',
       models: [
-        { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', cost: '$0.075 / 1M tokens (Ultra-barato)', speed: '~300ms' },
-        { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', cost: '$0.35 / 1M tokens (Alta capacidade)', speed: '~600ms' },
+        { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite', cost: '$0.075 / 1M tokens (Ativo & Ultra-barato)', speed: '~300ms' },
+        { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', cost: '$0.150 / 1M tokens (Alta capacidade)', speed: '~450ms' },
+        { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', cost: '$0.350 / 1M tokens (Experimental)', speed: '~600ms' },
       ],
       isKeyConfigured: isGeminiValid,
     },
@@ -185,7 +186,8 @@ export async function generateTutorTurn(
   profile: UserProfile,
   relevantMemories: UserMemory[],
   recentHistory: ChatMessage[],
-  sessionTopic: string = 'Geral'
+  sessionTopic: string = 'Geral',
+  customGeminiKey?: string
 ): Promise<TutorResponsePayload> {
   const systemInstruction = buildSystemPrompt(profile, relevantMemories, sessionTopic);
 
@@ -221,90 +223,120 @@ export async function generateTutorTurn(
     }
   }
 
-  // 3. Check Gemini provider (Default: gemini-3.1-flash-lite)
-  if (geminiClient) {
+  // 3. Check Gemini provider with automatic model cascading
+  let clientToUse: GoogleGenAI | null = geminiClient;
+  if (customGeminiKey && customGeminiKey.trim().length > 15 && customGeminiKey !== 'MY_GEMINI_API_KEY') {
     try {
-      const formattedHistory = recentHistory.slice(-8).map((m) => ({
-        role: m.sender === 'user' ? 'user' : 'model',
-        parts: [{ text: m.text }],
-      }));
-
-      formattedHistory.push({
-        role: 'user',
-        parts: [{ text: userMessage }],
-      });
-
-      const response = await geminiClient.models.generateContent({
-        model: geminiModel,
-        contents: formattedHistory as any,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              conversationalReply: {
-                type: Type.STRING,
-                description: 'The conversational response acknowledging what the student said in a warm, encouraging manner.',
-              },
-              followUpQuestion: {
-                type: Type.STRING,
-                description: 'An open-ended question to continue the dialogue.',
-              },
-              hasCorrection: {
-                type: Type.BOOLEAN,
-                description: 'True if a grammar, vocabulary, or phrasing issue was detected.',
-              },
-              correctionSnippet: {
-                type: Type.STRING,
-                description: 'Concise correction or more natural alternative, e.g. "More naturally: I have been working here since 2021."',
-              },
-              portugueseExplanation: {
-                type: Type.STRING,
-                description: 'Short grammatical or conceptual explanation in Portuguese if useful for this error or if user asked in Portuguese.',
-              },
-              newMemoriesToExtract: {
-                type: Type.ARRAY,
-                description: 'New facts about the user discovered in this turn to remember for future sessions.',
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    category: {
-                      type: Type.STRING,
-                      description: 'biografia, meta, interesse, or dificuldade',
-                    },
-                    content: {
-                      type: Type.STRING,
-                      description: 'Concise fact in Portuguese or English.',
-                    },
-                  },
-                  required: ['category', 'content'],
-                },
-              },
-              newVocabularyTerms: {
-                type: Type.ARRAY,
-                description: 'Useful words or expressions to add to user spaced repetition flashcards.',
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    term: { type: Type.STRING },
-                    translation: { type: Type.STRING },
-                    exampleSentence: { type: Type.STRING },
-                    cefr: { type: Type.STRING },
-                  },
-                  required: ['term', 'translation', 'exampleSentence'],
-                },
-              },
-            },
-            required: ['conversationalReply', 'followUpQuestion', 'hasCorrection'],
+      clientToUse = new GoogleGenAI({
+        apiKey: customGeminiKey.trim(),
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
           },
         },
       });
+    } catch (initErr) {
+      console.warn('Failed to initialize client with custom Gemini key:', initErr);
+    }
+  }
 
-      const parsed: TutorResponsePayload = JSON.parse(response.text || '{}');
-      return parsed;
-    } catch (err) {
-      console.error('Gemini API call failed, using graceful pedagogical fallback:', err);
+  if (clientToUse) {
+    // Cascade models: try ultra-fast gemini-3.5-flash-lite first, then gemini-3.5-flash, gemini-2.5-flash, etc.
+    const candidateModels = [
+      geminiModel,
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-2.5-flash',
+      'gemini-1.5-flash',
+      'gemini-3.8-flash',
+    ].filter((v, i, a) => a.indexOf(v) === i);
+
+    for (const modelCandidate of candidateModels) {
+      try {
+        const formattedHistory = recentHistory.slice(-8).map((m) => ({
+          role: m.sender === 'user' ? 'user' : 'model',
+          parts: [{ text: m.text }],
+        }));
+
+        formattedHistory.push({
+          role: 'user',
+          parts: [{ text: userMessage }],
+        });
+
+        const response = await clientToUse.models.generateContent({
+          model: modelCandidate,
+          contents: formattedHistory as any,
+          config: {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                conversationalReply: {
+                  type: Type.STRING,
+                  description: 'The conversational response acknowledging what the student said in a warm, encouraging manner.',
+                },
+                followUpQuestion: {
+                  type: Type.STRING,
+                  description: 'An open-ended question to continue the dialogue.',
+                },
+                hasCorrection: {
+                  type: Type.BOOLEAN,
+                  description: 'True if a grammar, vocabulary, or phrasing issue was detected.',
+                },
+                correctionSnippet: {
+                  type: Type.STRING,
+                  description: 'Concise correction or more natural alternative, e.g. "More naturally: I have been working here since 2021."',
+                },
+                portugueseExplanation: {
+                  type: Type.STRING,
+                  description: 'Short grammatical or conceptual explanation in Portuguese if useful for this error or if user asked in Portuguese.',
+                },
+                newMemoriesToExtract: {
+                  type: Type.ARRAY,
+                  description: 'New facts about the user discovered in this turn to remember for future sessions.',
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      category: {
+                        type: Type.STRING,
+                        description: 'biografia, meta, interesse, or dificuldade',
+                      },
+                      content: {
+                        type: Type.STRING,
+                        description: 'Concise fact in Portuguese or English.',
+                      },
+                    },
+                    required: ['category', 'content'],
+                  },
+                },
+                newVocabularyTerms: {
+                  type: Type.ARRAY,
+                  description: 'Useful words or expressions to add to user spaced repetition flashcards.',
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      term: { type: Type.STRING },
+                      translation: { type: Type.STRING },
+                      exampleSentence: { type: Type.STRING },
+                      cefr: { type: Type.STRING },
+                    },
+                    required: ['term', 'translation', 'exampleSentence'],
+                  },
+                },
+              },
+              required: ['conversationalReply', 'followUpQuestion', 'hasCorrection'],
+            },
+          },
+        });
+
+        const parsed: TutorResponsePayload = JSON.parse(response.text || '{}');
+        if (parsed.conversationalReply) {
+          return parsed;
+        }
+      } catch (err: any) {
+        console.warn(`Gemini candidate model "${modelCandidate}" attempt note: ${err?.message || err}. Cascading...`);
+      }
     }
   }
 
@@ -313,8 +345,21 @@ export async function generateTutorTurn(
 }
 
 function buildSystemPrompt(profile: UserProfile, relevantMemories: UserMemory[], sessionTopic: string): string {
+  const now = new Date();
+  const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  const dateEnglish = now.toLocaleDateString('en-US', dateOptions);
+  const datePortuguese = now.toLocaleDateString('pt-BR', dateOptions);
+  const timeString = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
   return `
 You are "Aria", an empathetic, intelligent, and highly supportive AI language tutor partner for learners of ${profile.targetLanguage} whose native language is ${profile.nativeLanguage}.
+
+Real-Time Calendar & Environment Context:
+- Current Date (English): ${dateEnglish}
+- Current Date (Portuguese): ${datePortuguese}
+- Current Time: ${timeString}
+- Current Year: ${now.getFullYear()}
+Important: If the user asks what day it is today, what time it is, or questions about the date/day of the week ("que dia é hoje?", "what day is today?", "today"), ALWAYS answer accurately and naturally using the exact current date/time provided above!
 
 Target User Profile:
 - Current CEFR Level: ${profile.cefrLevel}
@@ -329,7 +374,7 @@ ${relevantMemories.map((m) => `- [${m.category.toUpperCase()}]: ${m.content}`).j
 
 Pedagogical Directives:
 1. Speak in ${profile.targetLanguage} adapted to CEFR level ${profile.cefrLevel}. Keep sentences natural, clear, and engaging.
-2. If the user asks in ${profile.nativeLanguage} or expresses confusion ("não entendi", "como diz", "por que"), explain politely in Portuguese, then provide the ${profile.targetLanguage} example and encourage them to try.
+2. If the user asks in ${profile.nativeLanguage} or expresses confusion ("não entendi", "como diz", "por que", "que dia é hoje"), answer their question directly, politely and naturally. If they asked in Portuguese, explain in Portuguese then provide the natural English phrasing.
 3. Apply "Sandwich Feedback": First acknowledge and validate what the user communicated (conversationalReply), then if there is a grammatical error, awkward phrasing, or false cognate, provide a concise constructive tip (correctionSnippet).
 4. ALWAYS conclude with an engaging follow-up question (followUpQuestion) relevant to their interests or the conversation topic.
 5. In "free" correction style, only correct severe impediments to comprehension. In "detailed" style, explain the structural rule. In "subtle" style, offer "You could also say: ...".
@@ -393,14 +438,18 @@ function generateLocalFallback(
   profile: UserProfile,
   topic: string
 ): TutorResponsePayload {
-  const lower = userInput.toLowerCase();
+  const lower = userInput.toLowerCase().trim();
   let hasCorrection = false;
   let correctionSnippet: string | undefined;
   let portugueseExplanation: string | undefined;
   const newMemories: Array<{ category: 'biografia' | 'meta' | 'interesse' | 'dificuldade'; content: string }> = [];
   const newVocab: Array<{ term: string; translation: string; exampleSentence: string; cefr: string }> = [];
 
-  // 1. Classical interference checks
+  const now = new Date();
+  const dateEnglish = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const datePortuguese = now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  // 1. Classical interference checks (Crucial for test suite & pedagogy)
   if (lower.includes('in the airport') || lower.includes('in airport')) {
     hasCorrection = true;
     correctionSnippet = 'More naturally: "I arrived at the airport" (we use "at" for specific transit spots).';
@@ -429,35 +478,54 @@ function generateLocalFallback(
     portugueseExplanation = 'Em inglês usamos o verbo "to be" com o adjetivo: "I am afraid of speaking".';
   }
 
-  // Check if user is asking for explanation in Portuguese
-  if (lower.includes('por que') || lower.includes('porque') || lower.includes('não entendi') || lower.includes('como diz')) {
+  // 2. Specific intent handling: DATE / TIME ("que dia é hoje?", "what day is today?", etc.)
+  const isDateInquiry = lower.includes('que dia') || lower.includes('what day') || lower.includes('qual o dia') || lower.includes('que data') || lower.includes('what is the date') || lower.includes('what date');
+  const isTimeInquiry = lower.includes('que hora') || lower.includes('what time') || lower.includes('que horas');
+  const isGreeting = lower === 'oi' || lower === 'olá' || lower === 'ola' || lower === 'hello' || lower === 'hi' || lower === 'hey';
+  const isIdentityInquiry = lower.includes('quem é você') || lower.includes('quem e voce') || lower.includes('who are you') || lower.includes('seu nome') || lower.includes('your name');
+
+  let conversationalReply = '';
+  let followUpQuestion = '';
+
+  if (isDateInquiry) {
+    conversationalReply = `Today is ${dateEnglish}! Em português: hoje é ${datePortuguese}. In English, we always capitalize the days of the week and months!`;
+    followUpQuestion = `How is your ${now.toLocaleDateString('en-US', { weekday: 'long' })} going so far?`;
+  } else if (isTimeInquiry) {
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    conversationalReply = `Right now it is ${timeStr}. Time flies when you are learning!`;
+    followUpQuestion = 'What time do you usually like to practice speaking English?';
+  } else if (isGreeting) {
+    conversationalReply = `Hello! 🌟 I'm Aria, your AI language partner. I'm here to chat, practice conversation, and help you reach fluency without fear of making mistakes!`;
+    followUpQuestion = 'How has your day been so far, and what would you like to talk about today?';
+  } else if (isIdentityInquiry) {
+    conversationalReply = `I am Aria, your personal AI English tutor inspired by TalkBud! I can converse with you, correct grammar smoothly, suggest natural phrases, and remember our conversations.`;
+    followUpQuestion = 'What is your main goal with English right now — travel, career, or daily conversation?';
+  } else if (lower.includes('por que') || lower.includes('porque') || lower.includes('não entendi') || lower.includes('como diz')) {
     portugueseExplanation = 'Sempre que tiver dúvidas sobre estruturas da língua, me pergunte! O importante é focar no uso prático do dia a dia.';
+    conversationalReply = `Perfeito! Tirar dúvidas em português é essencial para destravar o raciocínio antes de tentar a frase em inglês.`;
+    followUpQuestion = 'Gostaria de tentar formular essa mesma ideia em inglês agora?';
+  } else if (lower.includes('cappuccino') || lower.includes('coffee') || lower.includes('café') || topic === 'Cafeteria') {
+    conversationalReply = 'Coffee shops are great places to practice! Asking for coffee naturally in English gives an immediate confidence boost.';
+    followUpQuestion = 'Do you prefer ordering your coffee to-go or sitting down to enjoy the atmosphere?';
+  } else if (profile.cefrLevel === 'A1' || profile.cefrLevel === 'A2') {
+    conversationalReply = "I understand you very well! You are doing a fantastic job expressing yourself. Don't worry about small mistakes, practicing every day is the real secret.";
+    followUpQuestion = 'What is something fun or interesting that happened to you today?';
+  } else {
+    // For B1/B2/C1
+    conversationalReply = `I understand what you mean regarding "${userInput.length > 50 ? userInput.slice(0, 47) + '...' : userInput}". Communicating your thoughts smoothly is the most important skill in fluency.`;
+    followUpQuestion = topic === 'Entrevista'
+      ? 'What is a professional achievement you feel most proud of?'
+      : topic === 'Viagem'
+      ? 'What is the next destination on your travel wishlist and why?'
+      : 'How do you usually like to practice new vocabulary in your daily routine?';
   }
 
   // Detect personal facts
-  if (lower.includes('i work as') || lower.includes('my job is') || lower.includes('sou')) {
+  if (lower.includes('i work as') || lower.includes('my job is') || lower.includes('sou') || lower.includes('trabalho como')) {
     newMemories.push({
       category: 'biografia',
       content: `Mencionou sua profissão ou ocupação: "${userInput.slice(0, 80)}"`,
     });
-  }
-
-  // Conversational response
-  let conversationalReply = '';
-  let followUpQuestion = '';
-
-  if (profile.cefrLevel === 'A1' || profile.cefrLevel === 'A2') {
-    conversationalReply = "I understand you very well! You are doing a fantastic job expressing yourself. Don't worry about small mistakes, practicing every day is the real secret.";
-    followUpQuestion = topic === 'Cafeteria'
-      ? "Do you like drinking coffee in the morning or in the afternoon?"
-      : "What did you enjoy doing today?";
-  } else {
-    conversationalReply = "That makes total sense! Communicating clearly is all about getting your ideas across smoothly, and you did that with confidence.";
-    followUpQuestion = topic === 'Entrevista'
-      ? "What is a professional achievement you feel most proud of?"
-      : topic === 'Viagem'
-      ? "What is the next destination on your travel wishlist and why?"
-      : "How do you usually like to practice new vocabulary in your daily routine?";
   }
 
   return {

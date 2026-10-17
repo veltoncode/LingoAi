@@ -188,9 +188,11 @@ let localProgress: ProgressSummary = {
 
 function getAuthHeader(): Record<string, string> {
   const storedId = localStorage.getItem('lingonova_user_id') || 'user-demo';
+  const geminiKey = localStorage.getItem('lingonova_gemini_api_key') || '';
   return {
     'Content-Type': 'application/json',
     'x-user-id': storedId,
+    ...(geminiKey ? { 'x-gemini-key': geminiKey } : {}),
   };
 }
 
@@ -351,11 +353,12 @@ export const api = {
     tutorMessage: ChatMessage;
     correction: { snippet?: string; explanation?: string } | null;
   }> {
+    const geminiKey = localStorage.getItem('lingonova_gemini_api_key') || '';
     try {
       const res = await fetch('/api/tutor/chat', {
         method: 'POST',
         headers: getAuthHeader(),
-        body: JSON.stringify({ sessionId, text, isAudio }),
+        body: JSON.stringify({ sessionId, text, isAudio, geminiApiKey: geminiKey }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -363,7 +366,7 @@ export const api = {
       }
     } catch {}
 
-    // Resilient local evaluation fallback
+    // Resilient intelligent local evaluation fallback
     const userMsg: ChatMessage = {
       id: `msg-u-${Date.now()}`,
       sessionId,
@@ -376,7 +379,11 @@ export const api = {
 
     let correctionSnippet: string | undefined;
     let ptExplanation: string | undefined;
-    const lower = text.toLowerCase();
+    const lower = text.toLowerCase().trim();
+
+    const now = new Date();
+    const dateEnglish = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const datePortuguese = now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     if (lower.includes('in the airport') || lower.includes('in airport')) {
       correctionSnippet = 'More naturally: "I arrived at the airport" (use "at" for transit locations).';
@@ -386,12 +393,27 @@ export const api = {
       ptExplanation = '"Pretend" significa "fingir". Para dizer "pretendo", use "I plan to" ou "I intend to".';
     }
 
+    // Dynamic contextual response
+    let replyText = '';
+    const isDateInquiry = lower.includes('que dia') || lower.includes('what day') || lower.includes('qual o dia') || lower.includes('que data') || lower.includes('what is the date') || lower.includes('what date');
+    const isGreeting = lower === 'oi' || lower === 'olá' || lower === 'ola' || lower === 'hello' || lower === 'hi' || lower === 'hey';
+
+    if (isDateInquiry) {
+      replyText = `Today is ${dateEnglish}! Em português: hoje é ${datePortuguese}. How is your ${now.toLocaleDateString('en-US', { weekday: 'long' })} going so far?`;
+    } else if (isGreeting) {
+      replyText = `Hello! 🌟 I'm Aria, your AI English practice partner. I'm here to chat, correct grammar gently, and help you speak with confidence. What would you like to talk about today?`;
+    } else if (lower.includes('como diz') || lower.includes('não entendi') || lower.includes('por que')) {
+      replyText = `Excelente pergunta! Fique à vontade para perguntar em português sempre que tiver dúvidas sobre estruturas gramaticais. Como você gostaria de expressar essa ideia em inglês?`;
+    } else {
+      replyText = `I understand what you mean regarding "${text.length > 50 ? text.slice(0, 47) + '...' : text}"! Practicing consistently is the best way to get comfortable. What other thoughts or questions do you have on this topic?`;
+    }
+
     const tutorMsg: ChatMessage = {
       id: `msg-t-${Date.now()}`,
       sessionId,
       userId: 'user-demo',
       sender: 'tutor',
-      text: "I completely understand what you mean! You are communicating clearly and naturally. What do you think about that?",
+      text: replyText,
       isAudio: true,
       correctionSnippet,
       portugueseExplanation: ptExplanation,
@@ -555,15 +577,22 @@ export const api = {
       isKeyConfigured: boolean;
     }>;
   }> {
+    const localKey = typeof window !== 'undefined' ? localStorage.getItem('lingonova_gemini_api_key') : null;
     try {
-      const res = await fetch('/api/ai/status');
-      if (res.ok) return res.json();
+      const res = await fetch('/api/ai/status', { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = await res.json();
+        if (localKey && localKey.length > 15) {
+          data.isConfigured = true;
+        }
+        return data;
+      }
     } catch {}
     return {
       provider: 'gemini',
-      model: 'gemini-3.1-flash-lite',
-      isConfigured: true,
-      description: 'Google gemini-3.1-flash-lite (Econômico)',
+      model: 'gemini-3.5-flash-lite',
+      isConfigured: !!(localKey && localKey.length > 15),
+      description: 'Google gemini-3.5-flash-lite (Econômico & Super-rápido)',
       availableProviders: [],
     };
   },
@@ -581,10 +610,13 @@ export const api = {
     description: string;
     availableProviders?: any[];
   }> {
+    if (config.geminiApiKey && typeof window !== 'undefined') {
+      localStorage.setItem('lingonova_gemini_api_key', config.geminiApiKey.trim());
+    }
     try {
       const res = await fetch('/api/ai/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeader(),
         body: JSON.stringify(config),
       });
       if (res.ok) return res.json();

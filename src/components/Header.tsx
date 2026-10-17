@@ -10,7 +10,8 @@ import {
   Sparkles,
   User,
   LogOut,
-  MessageCircle
+  MessageCircle,
+  Key
 } from 'lucide-react';
 import { User as UserType } from '../services/api';
 
@@ -29,6 +30,7 @@ interface HeaderProps {
   setActiveTab: (tab: MainAppTab) => void;
   user: UserType | null;
   onOpenOnboarding: () => void;
+  onOpenApiKeyModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -36,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   user,
   onOpenOnboarding,
+  onOpenApiKeyModal,
 }) => {
   const tabs = [
     { id: 'chat', label: 'Conversa & Voz (Web)', icon: Bot, highlight: true },
@@ -71,7 +74,17 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={onOpenApiKeyModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-semibold transition-colors"
+              title="Configurar chave do Google Gemini"
+            >
+              <Key className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden xs:inline">Chave IA (Gemini)</span>
+              <span className="xs:hidden">IA</span>
+            </button>
+
             <button
               onClick={onOpenOnboarding}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60 rounded-xl text-xs font-semibold transition-colors"

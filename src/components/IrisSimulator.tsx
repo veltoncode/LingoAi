@@ -15,6 +15,7 @@ import {
   Check
 } from 'lucide-react';
 import { evaluateStudentMessage, speakText, stopSpeaking } from '../utils/tutorEngine';
+import { api } from '../services/api';
 
 interface ChatMessage {
   id: string;
@@ -32,6 +33,7 @@ export const IrisSimulator: React.FC = () => {
   const [inputText, setInputText] = useState<string>('');
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isPlayingVoice, setIsPlayingVoice] = useState<string | null>(null);
+  const [isTyping, setIsTyping] = useState<boolean>(false);
   const [streakDays, setStreakDays] = useState<number>(4);
   const [turnsCount, setTurnsCount] = useState<number>(1);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -54,9 +56,9 @@ export const IrisSimulator: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
-    if (!text) return;
+    if (!text || isTyping) return;
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -70,9 +72,24 @@ export const IrisSimulator: React.FC = () => {
     setInputText('');
     setIsRecording(false);
     setTurnsCount((prev) => prev + 1);
+    setIsTyping(true);
 
-    // Simulate tutor response with realistic latency
-    setTimeout(() => {
+    try {
+      const res = await api.sendChatMessage('whatsapp-sim-session', text, userMsg.isAudio);
+      const irisMsg: ChatMessage = {
+        id: `iris-${Date.now()}`,
+        sender: 'iris',
+        text: res.tutorMessage.text,
+        isAudio: true,
+        correctionSnippet: res.tutorMessage.correctionSnippet,
+        portugueseExplanation: res.tutorMessage.portugueseExplanation,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setMessages((prev) => [...prev, irisMsg]);
+      handlePlayAudio(irisMsg.id, irisMsg.text);
+    } catch (err) {
+      console.warn('Real AI tutor call failed, using graceful local fallback:', err);
       const evaluation = evaluateStudentMessage(text, cefrLevel, topic);
       const combinedText = `${evaluation.conversationalReply} ${evaluation.followUpQuestion}`;
 
@@ -87,10 +104,10 @@ export const IrisSimulator: React.FC = () => {
       };
 
       setMessages((prev) => [...prev, irisMsg]);
-      
-      // Auto-speak Iris's response
       handlePlayAudio(irisMsg.id, irisMsg.text);
-    }, 800);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const handlePlayAudio = (id: string, text: string) => {
@@ -357,6 +374,18 @@ export const IrisSimulator: React.FC = () => {
               </div>
             );
           })}
+          {isTyping && (
+            <div className="flex items-start">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-sm p-3.5 shadow-md flex items-center gap-2 text-xs text-slate-400">
+                <div className="flex gap-1 items-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce [animation-delay:0.2s]"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce [animation-delay:0.4s]"></span>
+                </div>
+                <span>Iris está respondendo com IA...</span>
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 

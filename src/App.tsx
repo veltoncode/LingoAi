@@ -9,6 +9,7 @@ import { SettingsPrivacyView } from './components/SettingsPrivacyView';
 import { DossierView } from './components/DossierView';
 import { TestCaseRunner } from './components/TestCaseRunner';
 import { OnboardingModal } from './components/OnboardingModal';
+import { ApiKeyModal } from './components/ApiKeyModal';
 import { User, UserProfile, api } from './services/api';
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -60,6 +62,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         user={user}
         onOpenOnboarding={() => setIsOnboardingOpen(true)}
+        onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
       />
 
       {/* Main Tab Content */}
@@ -90,6 +93,12 @@ export default function App() {
         isOpen={isOnboardingOpen}
         onClose={() => setIsOnboardingOpen(false)}
         onSaved={(updated) => setProfile(updated)}
+      />
+
+      {/* Gemini API Key Configuration Modal */}
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
       />
 
       {/* Footer */}

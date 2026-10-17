@@ -143,13 +143,17 @@ apiRouter.post('/tutor/chat', async (req: Request, res: Response) => {
   const memories = db.getMemories(userId);
   const recentHistory = db.getMessages(userId, sessionId);
 
-  // 3. Generate tutor turn with Gemini or fallback
+  // 3. Extract custom Gemini key from headers or request body if supplied
+  const customGeminiKey = (req.headers['x-gemini-key'] as string) || req.body.geminiApiKey;
+
+  // 4. Generate tutor turn with Gemini or fallback
   const aiTurn = await generateTutorTurn(
     text.trim(),
     profile,
     memories,
     recentHistory,
-    session.topic
+    session.topic,
+    customGeminiKey
   );
 
   const tutorFullText = `${aiTurn.conversationalReply} ${aiTurn.followUpQuestion}`;

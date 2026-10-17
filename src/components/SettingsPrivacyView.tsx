@@ -39,7 +39,7 @@ export const SettingsPrivacyView: React.FC<SettingsPrivacyViewProps> = ({
   // AI Configuration State
   const [aiStatus, setAiStatus] = useState<any>(null);
   const [selectedProvider, setSelectedProvider] = useState<string>('gemini');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.1-flash-lite');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.5-flash-lite');
   const [customKey, setCustomKey] = useState<string>('');
   const [isSavingAi, setIsSavingAi] = useState<boolean>(false);
   const [saveAiSuccess, setSaveAiSuccess] = useState<boolean>(false);
@@ -53,7 +53,9 @@ export const SettingsPrivacyView: React.FC<SettingsPrivacyViewProps> = ({
       const status = await api.getAiStatus();
       setAiStatus(status);
       setSelectedProvider(status.provider);
-      setSelectedModel(status.model);
+      setSelectedModel(status.model || 'gemini-3.5-flash-lite');
+      const savedKey = localStorage.getItem('lingonova_gemini_api_key');
+      if (savedKey) setCustomKey(savedKey);
     } catch (err) {
       console.error('Error loading AI status:', err);
     }
@@ -68,14 +70,16 @@ export const SettingsPrivacyView: React.FC<SettingsPrivacyViewProps> = ({
         model: selectedModel,
       };
       if (customKey.trim()) {
-        if (selectedProvider === 'gemini') payload.geminiApiKey = customKey.trim();
+        if (selectedProvider === 'gemini') {
+          payload.geminiApiKey = customKey.trim();
+          localStorage.setItem('lingonova_gemini_api_key', customKey.trim());
+        }
         if (selectedProvider === 'deepseek') payload.deepseekApiKey = customKey.trim();
         if (selectedProvider === 'groq') payload.groqApiKey = customKey.trim();
       }
       const updated = await api.updateAiConfig(payload);
       setAiStatus(updated);
       setSaveAiSuccess(true);
-      setCustomKey('');
       setTimeout(() => setSaveAiSuccess(false), 3000);
     } catch (err) {
       console.error('Error updating AI config:', err);

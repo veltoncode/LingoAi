@@ -9,12 +9,14 @@ import {
   PlayCircle,
   Sparkles,
   User,
-  LogOut
+  LogOut,
+  MessageCircle
 } from 'lucide-react';
 import { User as UserType } from '../services/api';
 
 export type MainAppTab = 
   | 'chat' 
+  | 'simulator'
   | 'vocabulary' 
   | 'memory' 
   | 'progress' 
@@ -36,11 +38,12 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenOnboarding,
 }) => {
   const tabs = [
-    { id: 'chat', label: 'Conversa & Voz (Aria)', icon: Bot, highlight: true },
+    { id: 'chat', label: 'Conversa & Voz (Web)', icon: Bot, highlight: true },
+    { id: 'simulator', label: 'Simulador WhatsApp (Iris)', icon: MessageCircle, badge: 'WhatsApp' },
     { id: 'vocabulary', label: 'Caderno SRS', icon: BookOpen, badge: 'Flashcards' },
     { id: 'memory', label: 'Memória Persistente', icon: Brain },
     { id: 'progress', label: 'Progresso & Fluência', icon: BarChart3 },
-    { id: 'settings', label: 'Configurações', icon: Settings },
+    { id: 'settings', label: 'Configurações & Modelos', icon: Settings },
     { id: 'testcases', label: 'Bateria de Testes', icon: PlayCircle, badge: '8 testes' },
     { id: 'dossier', label: 'Dossiê REA TalkBud', icon: FileText },
   ];

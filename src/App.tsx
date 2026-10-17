@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Header, MainAppTab } from './components/Header';
 import { ActiveChatView } from './components/ActiveChatView';
+import { IrisSimulator } from './components/IrisSimulator';
 import { VocabularyNotebook } from './components/VocabularyNotebook';
 import { MemoryManager } from './components/MemoryManager';
 import { ProgressView } from './components/ProgressView';
@@ -69,6 +70,7 @@ export default function App() {
             onOpenOnboarding={() => setIsOnboardingOpen(true)}
           />
         )}
+        {activeTab === 'simulator' && <IrisSimulator />}
         {activeTab === 'vocabulary' && <VocabularyNotebook />}
         {activeTab === 'memory' && <MemoryManager />}
         {activeTab === 'progress' && <ProgressView />}
@@ -98,7 +100,7 @@ export default function App() {
             <span>LingoNova AI • Tutor de Idiomas Funcional (REA TalkBud)</span>
           </div>
           <div className="text-slate-400">
-            Backend Full-Stack Express • Gemini 3.8 Flash • Memória Semântica & SRS
+            Backend Full-Stack Express • Multi-LLM (Gemini / DeepSeek / Groq) • Memória Semântica & SRS
           </div>
         </div>
       </footer>

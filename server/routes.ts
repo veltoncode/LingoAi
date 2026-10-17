@@ -277,3 +277,132 @@ apiRouter.get('/tests/run', async (req: Request, res: Response) => {
     results,
   });
 });
+
+// 10. WhatsApp Cloud API Webhook Handshake (Meta Verification)
+apiRouter.get('/whatsapp/webhook', (req: Request, res: Response) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN || 'lingonova_whatsapp_webhook_token';
+
+  if (mode === 'subscribe' && token === expectedToken) {
+    return res.status(200).send(challenge);
+  }
+  return res.sendStatus(403);
+});
+
+// 11. WhatsApp Inbound Message Handler (Meta Cloud API Webhook)
+apiRouter.post('/whatsapp/webhook', async (req: Request, res: Response) => {
+  try {
+    const body = req.body;
+
+    if (body.object === 'whatsapp_business_account' || body.entry) {
+      const entry = body.entry?.[0];
+      const changes = entry?.changes?.[0];
+      const message = changes?.value?.messages?.[0];
+      const from = message?.from || 'whatsapp-demo';
+
+      if (message) {
+        const text = message.text?.body || message.caption || 'Hello Iris!';
+        const isAudio = message.type === 'audio';
+
+        let user = db.getUserByEmail(`${from}@whatsapp.lingonova.internal`);
+        if (!user) {
+          user = db.createUser(`Aluno WhatsApp (${from.slice(-4)})`, `${from}@whatsapp.lingonova.internal`);
+        }
+
+        const profile = db.getProfile(user.id);
+        const memories = db.getMemories(user.id);
+        const recentHistory = db.getRecentMessages(user.id, 8);
+
+        const aiTurn = await generateTutorTurn(text, profile, memories, recentHistory, 'WhatsApp Chat');
+        const replyText = `${aiTurn.conversationalReply} ${aiTurn.followUpQuestion}`;
+
+        let session = db.getSessions(user.id)[0];
+        if (!session) {
+          session = db.createSession(user.id, 'Conversa WhatsApp', 'Geral', profile.cefrLevel);
+        }
+
+        db.addMessage(user.id, session.id, 'user', text, isAudio);
+        db.addMessage(user.id, session.id, 'tutor', replyText, true, aiTurn.correctionSnippet, aiTurn.portugueseExplanation);
+
+        return res.status(200).json({
+          status: 'dispatched',
+          to: from,
+          text: replyText,
+          correction: aiTurn.correctionSnippet,
+          portugueseExplanation: aiTurn.portugueseExplanation,
+        });
+      }
+    }
+
+    return res.status(200).json({ status: 'acknowledged' });
+  } catch (err) {
+    console.error('WhatsApp webhook error:', err);
+    return res.status(500).json({ error: 'Webhook processing failed.' });
+  }
+});
+
+// 12. WhatsApp Simulator Dispatch Endpoint
+apiRouter.post('/whatsapp/simulate', async (req: Request, res: Response) => {
+  const { message, from = '5511999998888', isAudio = false, topic = 'Geral' } = req.body;
+  const userId = getAuthUserId(req);
+
+  const profile = db.getProfile(userId);
+  const memories = db.getMemories(userId);
+  const recentHistory = db.getRecentMessages(userId, 6);
+
+  const aiTurn = await generateTutorTurn(message, profile, memories, recentHistory, topic);
+  const combinedText = `${aiTurn.conversationalReply} ${aiTurn.followUpQuestion}`;
+
+  res.json({
+    recipient: from,
+    messageType: isAudio ? 'audio/ogg' : 'text',
+    irisResponse: {
+      conversationalReply: aiTurn.conversationalReply,
+      followUpQuestion: aiTurn.followUpQuestion,
+      fullText: combinedText,
+      hasCorrection: aiTurn.hasCorrection,
+      correctionSnippet: aiTurn.correctionSnippet,
+      portugueseExplanation: aiTurn.portugueseExplanation,
+    },
+    metaDispatchPayload: {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: from,
+      type: 'text',
+      text: { body: combinedText },
+    },
+  });
+});
+
+// 13. Daily Engagement Scheduler & Streak Preservation (RF-06 & Seção 2.3)
+apiRouter.get('/scheduler/status', (req: Request, res: Response) => {
+  const userId = getAuthUserId(req);
+  const progress = db.getProgress(userId);
+  const profile = db.getProfile(userId);
+
+  res.json({
+    currentStreakDays: progress.streakDays,
+    lastActiveDate: progress.lastActiveDate,
+    needsReminder: true,
+    recommendedHook: `Hey! Are you ready for a quick 3-minute chat about ${profile.interests[0] || 'your day'}? Let's keep your ${progress.streakDays}-day streak alive! 🔥`,
+  });
+});
+
+apiRouter.post('/scheduler/trigger-reminders', (req: Request, res: Response) => {
+  const userId = getAuthUserId(req);
+  const profile = db.getProfile(userId);
+  const progress = db.getProgress(userId);
+
+  const hookMessage = `Good morning! ☕ How is your coffee today? Aria is ready for your 3-minute speaking practice to protect your ${progress.streakDays}-day streak!`;
+
+  res.json({
+    status: 'triggered',
+    userId,
+    channel: 'whatsapp_push',
+    message: hookMessage,
+    scheduledAt: new Date().toISOString(),
+  });
+});

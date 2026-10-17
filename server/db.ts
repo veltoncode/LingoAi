@@ -267,7 +267,7 @@ export const db = {
   },
   createUser(name: string, email: string): User {
     const newUser: User = {
-      id: `user-${Date.now()}`,
+      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name,
       email,
       createdAt: new Date().toISOString(),
@@ -360,7 +360,7 @@ export const db = {
   },
   createSession(userId: string, title: string, topic: string = 'Geral', cefrLevel: string = 'B1'): ChatSession {
     const session: ChatSession = {
-      id: `sess-${Date.now()}`,
+      id: `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       userId,
       title: title || `Conversa sobre ${topic}`,
       topic,
@@ -385,6 +385,12 @@ export const db = {
     return dbCache.messages
       .filter((m) => m.userId === userId && m.sessionId === sessionId)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  },
+  getRecentMessages(userId: string, limit: number = 8): ChatMessage[] {
+    return dbCache.messages
+      .filter((m) => m.userId === userId)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .slice(-limit);
   },
   addMessage(
     userId: string,
@@ -437,7 +443,7 @@ export const db = {
     }
 
     const mem: UserMemory = {
-      id: `mem-${Date.now()}`,
+      id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       userId,
       category,
       content,
@@ -486,7 +492,7 @@ export const db = {
     }
 
     const item: VocabularyItem = {
-      id: `voc-${Date.now()}`,
+      id: `voc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       userId,
       term,
       translation,
